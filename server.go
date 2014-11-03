@@ -125,6 +125,7 @@ import (
 	"bufio"
 	"encoding/gob"
 	"errors"
+	//"fmt" // ***DEBUG***
 	"io"
 	"log"
 	"net"
@@ -180,14 +181,24 @@ type Response struct {
 	next          *Response // for free list in Server
 }
 
+// this is a notification event to ne sent to a client
+type Notification struct {
+	ServiceMethod string      // the notification "Type.Method"
+	Params        interface{} // arbitrary data to send to client
+}
+
 // Server represents an RPC Server.
 type Server struct {
-	mu         sync.RWMutex // protects the serviceMap
-	serviceMap map[string]*service
-	reqLock    sync.Mutex // protects freeReq
-	freeReq    *Request
-	respLock   sync.Mutex // protects freeResp
-	freeResp   *Response
+	mu                  sync.RWMutex // protects the serviceMap
+	serviceMap          map[string]*service
+	reqLock             sync.Mutex // protects freeReq
+	freeReq             *Request
+	respLock            sync.Mutex // protects freeResp
+	freeResp            *Response
+	notificationLock    sync.Mutex // protects notifications
+	notificationStarted bool
+	//notificationStop    chan bool
+	notificationChan chan Notification
 }
 
 // NewServer returns a new Server.
@@ -232,6 +243,26 @@ func (server *Server) Register(rcvr interface{}) error {
 // instead of the receiver's concrete type.
 func (server *Server) RegisterName(name string, rcvr interface{}) error {
 	return server.register(rcvr, name, true)
+}
+
+// send a notification message to client
+func (server *Server) SendNotification(method string, params interface{}) error {
+	dot := strings.LastIndex(method, ".")
+	if dot < 0 {
+		err := errors.New("rpc: service/method request ill-formed: " + method)
+		return err
+	}
+	server.notificationLock.Lock()
+	defer server.notificationLock.Unlock()
+	if !server.notificationStarted {
+		return errors.New("rpc: notifications service not started")
+	}
+
+	server.notificationChan <- Notification{
+		ServiceMethod: method,
+		Params: params,
+	}
+	return nil
 }
 
 func (server *Server) register(rcvr interface{}, name string, useName bool) error {
@@ -434,6 +465,8 @@ func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 // decode requests and encode responses.
 func (server *Server) ServeCodec(codec ServerCodec) {
 	sending := new(sync.Mutex)
+	server.StartNotification(codec)
+	defer server.StopNotification(codec)
 	for {
 		service, mtype, req, argv, replyv, keepReading, err := server.readRequest(codec)
 		if err != nil {
@@ -472,6 +505,46 @@ func (server *Server) ServeRequest(codec ServerCodec) error {
 		return err
 	}
 	service.call(server, sending, mtype, req, argv, replyv, codec)
+	return nil
+}
+
+// handle sending notification
+func (server *Server) StartNotification(codec ServerCodec) error {
+	server.notificationLock.Lock()
+	defer server.notificationLock.Unlock()
+	if server.notificationStarted {
+		return nil
+	}
+	//fmt.Printf("starting notifications on: %v\n", server)
+	server.notificationStarted = true
+	server.notificationChan = make(chan Notification, 10)
+	go func() {
+	loop:
+		for {
+			message, ok := <-server.notificationChan
+			if !ok {
+				break loop
+			}
+			//fmt.Printf("*****SEND NOTIFY: %v\n", message)
+			sending := new(sync.Mutex)
+			req := server.getRequest()
+			req.ServiceMethod = message.ServiceMethod //@@@@@
+			server.sendResponse(sending, req, message, codec, "")
+		}
+	}()
+	return nil
+}
+
+// shutdown sending notifications
+func (server *Server) StopNotification(codec ServerCodec) error {
+	server.notificationLock.Lock()
+	defer server.notificationLock.Unlock()
+	if !server.notificationStarted {
+		return nil
+	}
+	//fmt.Printf("stopping notifications on: %v\n", server)
+	server.notificationStarted = false
+	close(server.notificationChan)
 	return nil
 }
 

@@ -24,6 +24,10 @@ var (
 	serverAddr, newServerAddr string
 	httpServerAddr            string
 	once, newOnce, httpOnce   sync.Once
+	notificationCount         int
+	newNotificationCount      int
+	notificationReceived         int
+	newNotificationReceived      int
 )
 
 const (
@@ -117,19 +121,68 @@ func startHttpServer() {
 }
 
 func TestRPC(t *testing.T) {
+	defer func() {
+		if 0 == notificationReceived {
+			t.Error("notification count was zero")
+		}
+		if notificationCount != notificationReceived {
+			t.Errorf("notification count error sent: %d  received: %d", notificationCount, notificationReceived)
+		}
+		if 0 == newNotificationReceived {
+			t.Error("new notification count was zero")
+		}
+		if newNotificationCount != newNotificationReceived {
+			t.Errorf("new notification count error sent: %d  received: %d", newNotificationCount, newNotificationReceived)
+		}
+	}()
+
+	stop := make(chan bool)
+	defer close(stop)
+
 	once.Do(startServer)
-	testRPC(t, serverAddr)
+	go backgroundNotifier(DefaultServer, &notificationCount, stop)
+	testRPC(t, serverAddr, &notificationReceived)
+
 	newOnce.Do(startNewServer)
-	testRPC(t, newServerAddr)
+	go backgroundNotifier(newServer, &newNotificationCount, stop)
+	testRPC(t, newServerAddr, &newNotificationReceived)
 	testNewServerRPC(t, newServerAddr)
 }
 
-func testRPC(t *testing.T, addr string) {
+// send 10 notifications at 5ms intervals
+func backgroundNotifier(server *Server, count *int, stop <-chan bool) {
+	*count = 0
+	const maxCount = 10
+	const interval = 5 * time.Millisecond
+loop:
+	for {
+		select {
+		case <-stop:
+			break loop
+		case <-time.After(interval):
+			if *count >= maxCount {
+				break loop
+			}
+			*count += 1
+			message := fmt.Sprintf("message: %d", *count)
+			server.SendNotification("Hello.World", message)
+		}
+	}
+}
+
+func testRPC(t *testing.T, addr string, count *int) {
 	client, err := Dial("tcp", addr)
 	if err != nil {
 		t.Fatal("dialing", err)
 	}
+
 	defer client.Close()
+
+	// notification callback
+	client.SetCallback(func(method string, params interface{}) {
+		*count += 1
+		fmt.Printf("received notification: method=%s  params=%v\n", method, params)
+	})
 
 	// Synchronous calls
 	args := &Args{7, 8}
@@ -141,6 +194,9 @@ func testRPC(t *testing.T, addr string) {
 	if reply.C != args.A+args.B {
 		t.Errorf("Add: expected %d got %d", reply.C, args.A+args.B)
 	}
+
+	// time for a notification to get through
+	time.Sleep(5 * time.Millisecond)
 
 	// Nonexistent method
 	args = &Args{7, 0}
@@ -186,6 +242,9 @@ func testRPC(t *testing.T, addr string) {
 		t.Errorf("Mul: expected %d got %d", mulReply.C, args.A*args.B)
 	}
 
+	// time for a notification to get through
+	time.Sleep(5 * time.Millisecond)
+
 	// Error test
 	args = &Args{7, 0}
 	reply = new(Reply)
@@ -216,6 +275,9 @@ func testRPC(t *testing.T, addr string) {
 	} else if reply.C != Val {
 		t.Errorf("Scan: expected %d got %d", Val, reply.C)
 	}
+
+	// time for a notification to get through
+	time.Sleep(5 * time.Millisecond)
 
 	// Non-struct reply
 	args = &Args{27, 35}
@@ -249,6 +311,9 @@ func testRPC(t *testing.T, addr string) {
 	if reply.C != args.A+args.B {
 		t.Errorf("Add: expected %d got %d", reply.C, args.A+args.B)
 	}
+
+	// wait for all remaining notifications
+	time.Sleep(50 * time.Millisecond)
 }
 
 func testNewServerRPC(t *testing.T, addr string) {
@@ -257,6 +322,9 @@ func testNewServerRPC(t *testing.T, addr string) {
 		t.Fatal("dialing", err)
 	}
 	defer client.Close()
+
+	// time for a notification to get through
+	time.Sleep(5 * time.Millisecond)
 
 	// Synchronous calls
 	args := &Args{7, 8}
@@ -268,6 +336,9 @@ func testNewServerRPC(t *testing.T, addr string) {
 	if reply.C != args.A+args.B {
 		t.Errorf("Add: expected %d got %d", reply.C, args.A+args.B)
 	}
+
+	// wait for all remaining notifications
+	time.Sleep(50 * time.Millisecond)
 }
 
 func TestHTTP(t *testing.T) {

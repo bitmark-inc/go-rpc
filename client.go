@@ -34,6 +34,9 @@ type Call struct {
 	Done          chan *Call  // Strobes when call is complete.
 }
 
+// prototype of callback function
+type callbackFunction func(method string, params interface{})
+
 // Client represents an RPC Client.
 // There may be multiple outstanding Calls associated
 // with a single Client, and a Client may be used by
@@ -44,6 +47,7 @@ type Client struct {
 	sending sync.Mutex
 
 	mutex    sync.Mutex // protects following
+	callback callbackFunction
 	request  Request
 	seq      uint64
 	pending  map[uint64]*Call
@@ -123,9 +127,15 @@ func (client *Client) input() {
 			// removed; response is a server telling us about an
 			// error reading request body. We should still attempt
 			// to read error body, but there's no one to give it to.
-			err = client.codec.ReadResponseBody(nil)
+			//
+			// if there is a method field then this is a notification
+			// so pass it to the handler
+			notification := Notification{}
+			err = client.codec.ReadResponseBody(&notification)
 			if err != nil {
 				err = errors.New("reading error body: " + err.Error())
+			} else if nil != client.callback {
+				client.callback(notification.ServiceMethod, notification.Params)
 			}
 		case response.Error != "":
 			// We've got an error response. Give this to the request;
@@ -314,4 +324,14 @@ func (client *Client) Go(serviceMethod string, args interface{}, reply interface
 func (client *Client) Call(serviceMethod string, args interface{}, reply interface{}) error {
 	call := <-client.Go(serviceMethod, args, reply, make(chan *Call, 1)).Done
 	return call.Error
+}
+
+// set a callback for notifications
+// returns previous callback
+func (client *Client) SetCallback(f callbackFunction) callbackFunction {
+	client.mutex.Lock()
+	defer client.mutex.Unlock()
+	previous := client.callback
+	client.callback = f
+	return previous
 }
