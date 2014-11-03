@@ -181,7 +181,7 @@ func testRPC(t *testing.T, addr string, count *int) {
 	// notification callback
 	client.SetCallback(func(method string, params interface{}) {
 		*count += 1
-		fmt.Printf("received notification: method=%s  params=%v\n", method, params)
+		t.Logf("received notification: method=%s  params=%v\n", method, params)
 	})
 
 	// Synchronous calls
