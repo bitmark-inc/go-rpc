@@ -167,7 +167,7 @@ func TestClient(t *testing.T) {
 	// notification callback
 	client.SetCallback(func(method string, params interface{}) {
 		receivedCount += 1
-		fmt.Printf("received notification: method=%s  params=%v\n", method, params)
+		t.Logf("received notification: method=%s  params=%v\n", method, params)
 	})
 
 	// async notifier
