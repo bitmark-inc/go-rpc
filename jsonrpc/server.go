@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/rpc"
+	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
+	"strings"
 	"sync"
+	"unicode"
 )
 
 var errMissingParams = errors.New("jsonrpc: request body missing params")
@@ -61,12 +63,39 @@ type serverResponse struct {
 	Error  interface{}      `json:"error"`
 }
 
+// capitalise after "." and "_" and remove "_"
+// map "type.method"           -> "Type.Method"
+// map "type.method_name"      -> "Type.MethodName"
+// map "some_type.method"      -> "SomeType.Method"
+// map "some_type.method_name" -> "SomeType.MethodName"
+func camel(s string) string {
+	toUpper := true
+	firstDot := true
+	return strings.Map(func(r rune) rune {
+		if firstDot && '.' == r {
+			firstDot = false
+			toUpper = true
+			return r
+		}
+		if '_' == r {
+			toUpper = true
+			return -1
+		}
+		if toUpper {
+			toUpper = false
+			return unicode.ToUpper(r)
+		}
+		return r
+	}, s)
+}
+
 func (c *serverCodec) ReadRequestHeader(r *rpc.Request) error {
 	c.req.reset()
 	if err := c.dec.Decode(&c.req); err != nil {
 		return err
 	}
-	r.ServiceMethod = c.req.Method
+
+	r.ServiceMethod = camel(c.req.Method)
 
 	// JSON request id can be any JSON value;
 	// RPC package expects uint64.  Translate to

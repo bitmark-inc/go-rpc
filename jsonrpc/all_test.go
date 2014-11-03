@@ -12,7 +12,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net"
-	"net/rpc"
+	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
 	"strings"
 	"testing"
 )
@@ -34,6 +34,11 @@ type ArithAddResp struct {
 }
 
 func (t *Arith) Add(args *Args, reply *Reply) error {
+	reply.C = args.A + args.B
+	return nil
+}
+
+func (t *Arith) AddAgain(args *Args, reply *Reply) error {
 	reply.C = args.A + args.B
 	return nil
 }
@@ -174,6 +179,82 @@ func TestClient(t *testing.T) {
 	args = &Args{7, 0}
 	reply = new(Reply)
 	err = client.Call("Arith.Div", args, reply)
+	// expect an error: zero divide
+	if err == nil {
+		t.Error("Div: expected error")
+	} else if err.Error() != "divide by zero" {
+		t.Error("Div: expected divide by zero error; got", err)
+	}
+}
+
+// try lower case method names, also include '_'
+func TestClientLower(t *testing.T) {
+	// Assume server is okay (TestServer is above).
+	// Test client against server.
+	cli, srv := net.Pipe()
+	go ServeConn(srv)
+
+	client := NewClient(cli)
+	defer client.Close()
+
+	// Synchronous calls
+	args := &Args{7, 8}
+	reply := new(Reply)
+	err := client.Call("arith.add", args, reply)
+	if err != nil {
+		t.Errorf("Add: expected no error but got string %q", err.Error())
+	}
+	if reply.C != args.A+args.B {
+		t.Errorf("Add: got %d expected %d", reply.C, args.A+args.B)
+	}
+
+	args = &Args{7, 8}
+	reply = new(Reply)
+	err = client.Call("arith.add_again", args, reply)
+	if err != nil {
+		t.Errorf("AddAgain: expected no error but got string %q", err.Error())
+	}
+	if reply.C != args.A+args.B {
+		t.Errorf("AddAgain: got %d expected %d", reply.C, args.A+args.B)
+	}
+
+	args = &Args{7, 8}
+	reply = new(Reply)
+	err = client.Call("arith.mul", args, reply)
+	if err != nil {
+		t.Errorf("Mul: expected no error but got string %q", err.Error())
+	}
+	if reply.C != args.A*args.B {
+		t.Errorf("Mul: got %d expected %d", reply.C, args.A*args.B)
+	}
+
+	// Out of order.
+	args = &Args{7, 8}
+	mulReply := new(Reply)
+	mulCall := client.Go("arith.mul", args, mulReply, nil)
+	addReply := new(Reply)
+	addCall := client.Go("arith.add", args, addReply, nil)
+
+	addCall = <-addCall.Done
+	if addCall.Error != nil {
+		t.Errorf("Add: expected no error but got string %q", addCall.Error.Error())
+	}
+	if addReply.C != args.A+args.B {
+		t.Errorf("Add: got %d expected %d", addReply.C, args.A+args.B)
+	}
+
+	mulCall = <-mulCall.Done
+	if mulCall.Error != nil {
+		t.Errorf("Mul: expected no error but got string %q", mulCall.Error.Error())
+	}
+	if mulReply.C != args.A*args.B {
+		t.Errorf("Mul: got %d expected %d", mulReply.C, args.A*args.B)
+	}
+
+	// Error test
+	args = &Args{7, 0}
+	reply = new(Reply)
+	err = client.Call("arith.div", args, reply)
 	// expect an error: zero divide
 	if err == nil {
 		t.Error("Div: expected error")

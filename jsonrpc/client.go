@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/rpc"
+	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
 	"sync"
 )
 
