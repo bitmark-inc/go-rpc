@@ -15,6 +15,7 @@ import (
 	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
 	"strings"
 	"testing"
+	"time"
 )
 
 type Args struct {
@@ -62,6 +63,26 @@ func (t *Arith) Error(args *Args, reply *Reply) error {
 
 func init() {
 	rpc.Register(new(Arith))
+}
+// send 10 notifications at 5ms intervals
+func backgroundNotifier(server *rpc.Server, count *int, stop <-chan bool) {
+	*count = 0
+	const maxCount = 10
+	const interval = 5 * time.Millisecond
+loop:
+	for {
+		select {
+		case <-stop:
+			break loop
+		case <-time.After(interval):
+			if *count >= maxCount {
+				break loop
+			}
+			*count += 1
+			message := fmt.Sprintf("message: %d", *count)
+			server.SendNotification("Hello.World", []string{message})
+		}
+	}
 }
 
 func TestServerNoParams(t *testing.T) {
@@ -131,6 +152,30 @@ func TestClient(t *testing.T) {
 	client := NewClient(cli)
 	defer client.Close()
 
+	// check counts
+	receivedCount := 0
+	sentCount := 0
+	defer func() {
+		if 0 == receivedCount {
+			t.Error("notification count was zero")
+		}
+		if sentCount != receivedCount {
+			t.Errorf("new notification count error sent: %d  received: %d", sentCount, receivedCount)
+		}
+	}()
+
+	// notification callback
+	client.SetCallback(func(method string, params interface{}) {
+		receivedCount += 1
+		fmt.Printf("received notification: method=%s  params=%v\n", method, params)
+	})
+
+	// async notifier
+	stop := make(chan bool)
+	defer close(stop)
+
+	go backgroundNotifier(rpc.DefaultServer, &sentCount, stop)
+
 	// Synchronous calls
 	args := &Args{7, 8}
 	reply := new(Reply)
@@ -141,6 +186,9 @@ func TestClient(t *testing.T) {
 	if reply.C != args.A+args.B {
 		t.Errorf("Add: got %d expected %d", reply.C, args.A+args.B)
 	}
+
+	// time for a notification to get through
+	time.Sleep(5 * time.Millisecond)
 
 	args = &Args{7, 8}
 	reply = new(Reply)
@@ -175,6 +223,9 @@ func TestClient(t *testing.T) {
 		t.Errorf("Mul: got %d expected %d", mulReply.C, args.A*args.B)
 	}
 
+	// time for a notification to get through
+	time.Sleep(5 * time.Millisecond)
+
 	// Error test
 	args = &Args{7, 0}
 	reply = new(Reply)
@@ -185,6 +236,9 @@ func TestClient(t *testing.T) {
 	} else if err.Error() != "divide by zero" {
 		t.Error("Div: expected divide by zero error; got", err)
 	}
+
+	// wait for all remaining notifications
+	time.Sleep(50 * time.Millisecond)
 }
 
 // try lower case method names, also include '_'

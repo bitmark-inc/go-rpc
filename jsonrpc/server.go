@@ -51,6 +51,12 @@ type serverRequest struct {
 	Id     *json.RawMessage `json:"id"`
 }
 
+type serverNotify struct {
+	Method string           `json:"method"`
+	Params interface{}      `json:"params"`
+	Id     *json.RawMessage `json:"id"`
+}
+
 func (r *serverRequest) reset() {
 	r.Method = ""
 	r.Params = nil
@@ -106,7 +112,6 @@ func (c *serverCodec) ReadRequestHeader(r *rpc.Request) error {
 	c.req.Id = nil
 	r.Seq = c.seq
 	c.mutex.Unlock()
-
 	return nil
 }
 
@@ -129,6 +134,16 @@ func (c *serverCodec) ReadRequestBody(x interface{}) error {
 var null = json.RawMessage([]byte("null"))
 
 func (c *serverCodec) WriteResponse(r *rpc.Response, x interface{}) error {
+	n, ok := x.(rpc.Notification)
+	if ok {
+		notify := serverNotify{
+			Id: &null,
+			Method: n.ServiceMethod,
+			Params: n.Params,
+		}
+		return c.enc.Encode(notify)
+	}
+
 	c.mutex.Lock()
 	b, ok := c.pending[r.Seq]
 	if !ok {

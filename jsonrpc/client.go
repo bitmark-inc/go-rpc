@@ -21,8 +21,10 @@ type clientCodec struct {
 	c   io.Closer
 
 	// temporary work space
-	req  clientRequest
-	resp clientResponse
+	req    clientRequest
+	resp   clientResponse
+	notify clientNotification
+	isNotify bool
 
 	// JSON-RPC responses include the request id but not the request method.
 	// Package rpc expects both.
@@ -70,12 +72,44 @@ func (r *clientResponse) reset() {
 	r.Error = nil
 }
 
+type clientNotification struct {
+	Id     *json.RawMessage `json:"id"`
+	Method string           `json:"method"`
+	Params *json.RawMessage `json:"params"`
+}
+
+func (n *clientNotification) reset() {
+	n.Id = &null
+	n.Method = ""
+	n.Params = nil
+}
+
+
 func (c *clientCodec) ReadResponseHeader(r *rpc.Response) error {
 	c.resp.reset()
-	if err := c.dec.Decode(&c.resp); err != nil {
+	c.notify.reset()
+	c.isNotify = false
+	var raw json.RawMessage
+	//if err := c.dec.Decode(&c.resp); err != nil {
+	if err := c.dec.Decode(&raw); err != nil {
 		return err
 	}
+	err1 := json.Unmarshal(raw, &c.resp)
+	err2 := json.Unmarshal(raw, &c.notify)
+	if nil != err1 && nil != err2 {
+		return err1
+	}
 
+	// it is a notification
+	if "" != c.notify.Method && nil != c.notify.Params {
+		c.isNotify = true
+		r.Seq = 0
+		r.ServiceMethod = c.notify.Method
+		r.Error = ""
+		return nil
+	}
+
+	// normal result
 	c.mutex.Lock()
 	r.ServiceMethod = c.pending[c.resp.Id]
 	delete(c.pending, c.resp.Id)
@@ -96,11 +130,19 @@ func (c *clientCodec) ReadResponseHeader(r *rpc.Response) error {
 	return nil
 }
 
+// xx will be eithe rpc.Response or rpc.Notification
 func (c *clientCodec) ReadResponseBody(x interface{}) error {
 	if x == nil {
 		return nil
 	}
-	return json.Unmarshal(*c.resp.Result, x)
+	switch x.(type) {
+	case *rpc.Notification:
+		n := x.(*rpc.Notification)
+		n.ServiceMethod = c.notify.Method
+		return json.Unmarshal(*c.notify.Params, &n.Params)
+	default: // else is a result
+		return json.Unmarshal(*c.resp.Result, x)
+	}
 }
 
 func (c *clientCodec) Close() error {

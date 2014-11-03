@@ -5,4 +5,5 @@
 // copied from golang pkg/net/rpc/jsonrpc
 //
 // modified to accept lowercase type.method
+// modified to allow for a notification channel - server->client messaging
 package jsonrpc
