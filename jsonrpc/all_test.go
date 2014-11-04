@@ -44,6 +44,56 @@ func (t *Arith) AddAgain(args *Args, reply *Reply) error {
 	return nil
 }
 
+type IntArray []int
+// test the normal array type of JSON RPC
+func (t *Arith) SumP(args *IntArray, reply *Reply) error {
+	s := 0
+	for _, n := range *args {
+		s += n
+	}
+	reply.C = s
+	return nil
+}
+
+func (t *Arith) SumA(args IntArray, reply *Reply) error {
+	s := 0
+	for _, n := range args {
+		s += n
+	}
+	reply.C = s
+	return nil
+}
+
+func (t *Arith) MixedP(args *[]interface{}, reply *Reply) error {
+	s := 0
+	for _, n := range *args {
+		switch n.(type) {
+		case float64:  // JSON default number type
+			s += int(n.(float64))
+		case string:
+			s += len(n.(string))
+		default:  // ignore
+		}
+	}
+	reply.C = s
+	return nil
+}
+
+func (t *Arith) MixedA(args []interface{}, reply *Reply) error {
+	s := 0
+	for _, n := range args {
+		switch n.(type) {
+		case float64:  // JSON default number type
+			s += int(n.(float64))
+		case string:
+			s += len(n.(string))
+		default:  // ignore
+		}
+	}
+	reply.C = s
+	return nil
+}
+
 func (t *Arith) Mul(args *Args, reply *Reply) error {
 	reply.C = args.A * args.B
 	return nil
@@ -139,6 +189,57 @@ func TestServer(t *testing.T) {
 		}
 		if resp.Result.C != 2*i+1 {
 			t.Fatalf("resp: bad result: %d+%d=%d", i, i+1, resp.Result.C)
+		}
+	}
+}
+
+func TestSum(t *testing.T) {
+	cli, srv := net.Pipe()
+	defer cli.Close()
+	go ServeConn(srv)
+
+	client := NewClient(cli)
+	defer client.Close()
+
+	// array
+	m := []string{"Arith.SumP", "Arith.SumA"}
+	for _, method := range m {
+		args := &[]int{1, 3, 5, 7, 9, 11}
+		reply := new(Reply)
+		err := client.Call(method, args, reply)
+		if err != nil {
+			t.Errorf("%s: expected no error but got string %q", method, err.Error())
+		}
+		s := 0
+		for _, n := range *args {
+			s += n
+		}
+		if reply.C != s {
+			t.Errorf("%s: got %d expected %d", method, reply.C, s)
+		}
+	}
+}
+
+func TestMixed(t *testing.T) {
+	cli, srv := net.Pipe()
+	defer cli.Close()
+	go ServeConn(srv)
+
+	client := NewClient(cli)
+	defer client.Close()
+
+	// array
+	m := []string{"Arith.MixedP", "Arith.MixedA"}
+	for _, method := range m {
+		args := &[]interface{}{1, 3, 5, "hello", 7, "world", true, 9, 11, nil, 13}
+		reply := new(Reply)
+		err := client.Call(method, args, reply)
+		if err != nil {
+			t.Errorf("%s: expected no error but got string %q", method, err.Error())
+		}
+		s := 1 + 3 + 5 + 7 + 9 + 11 + 13 + len("hello") + len("world")
+		if reply.C != s {
+			t.Errorf("%s: got %d expected %d", method, reply.C, s)
 		}
 	}
 }
