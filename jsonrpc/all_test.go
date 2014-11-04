@@ -79,7 +79,8 @@ func (t *Arith) MixedP(args *[]interface{}, reply *Reply) error {
 	return nil
 }
 
-func (t *Arith) MixedA(args []interface{}, reply *Reply) error {
+type GenericArguments []interface{}
+func (t *Arith) MixedA(args GenericArguments, reply *Reply) error {
 	s := 0
 	for _, n := range args {
 		switch n.(type) {

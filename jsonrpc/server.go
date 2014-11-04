@@ -7,14 +7,17 @@ package jsonrpc
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
+	"reflect"
 	"strings"
 	"sync"
 	"unicode"
 )
 
 var errMissingParams = errors.New("jsonrpc: request body missing params")
+var errInvalidParams = errors.New("jsonrpc: params must be struct or slice")
 
 type serverCodec struct {
 	dec *json.Decoder // for reading JSON values
@@ -124,11 +127,29 @@ func (c *serverCodec) ReadRequestBody(x interface{}) error {
 	}
 	// JSON params is array value.
 	// RPC params is struct.
-	// Unmarshal into array containing struct for now.
-	// Should think about making RPC more general.
-	var params [1]interface{}
-	params[0] = x
-	return json.Unmarshal(*c.req.Params, &params)
+        //     or a slice of specific type
+	//     or []interface{} for a generic receive
+	fmt.Printf("Ps: %v\n", x)
+	v := reflect.ValueOf(x)
+	fmt.Printf("Vs: %s\n", v.Kind())
+	if reflect.Ptr == v.Kind() {
+		e := v.Elem()
+		fmt.Printf("Es: %s\n", e.Kind())
+		switch e.Kind() {
+		case reflect.Struct:
+			var params [1]interface{}
+			params[0] = x
+			fmt.Printf("IN: %s\n", *c.req.Params)
+			return json.Unmarshal(*c.req.Params, &params)
+
+		case reflect.Slice:
+			fmt.Printf("IN: %s\n", *c.req.Params)
+			return json.Unmarshal(*c.req.Params, x)
+
+		default:
+		}
+	}
+	return errInvalidParams
 }
 
 var null = json.RawMessage([]byte("null"))

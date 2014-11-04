@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
+	"reflect"
 	"sync"
 )
 
@@ -45,9 +46,9 @@ func NewClientCodec(conn io.ReadWriteCloser) rpc.ClientCodec {
 }
 
 type clientRequest struct {
-	Method string         `json:"method"`
-	Params [1]interface{} `json:"params"`
-	Id     uint64         `json:"id"`
+	Method string        `json:"method"`
+	Params interface{} `json:"params"`
+	Id     uint64        `json:"id"`
 }
 
 func (c *clientCodec) WriteRequest(r *rpc.Request, param interface{}) error {
@@ -55,7 +56,26 @@ func (c *clientCodec) WriteRequest(r *rpc.Request, param interface{}) error {
 	c.pending[r.Seq] = r.ServiceMethod
 	c.mutex.Unlock()
 	c.req.Method = r.ServiceMethod
-	c.req.Params[0] = param
+
+	fmt.Printf("P: %v\n", param)
+	v := reflect.ValueOf(param)
+	fmt.Printf("V: %s\n", v.Kind())
+	if reflect.Ptr == v.Kind() {
+		e := v.Elem()
+		fmt.Printf("E: %s\n", e.Kind())
+		switch e.Kind() {
+		case reflect.Struct:
+			c.req.Params = &[]interface{}{
+				param,
+			}
+		case reflect.Slice:
+			c.req.Params = param
+		default:
+			return errInvalidParams
+		}
+	} else {
+		return errInvalidParams
+	}
 	c.req.Id = r.Seq
 	return c.enc.Encode(&c.req)
 }
