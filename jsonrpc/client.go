@@ -57,12 +57,9 @@ func (c *clientCodec) WriteRequest(r *rpc.Request, param interface{}) error {
 	c.mutex.Unlock()
 	c.req.Method = r.ServiceMethod
 
-	fmt.Printf("P: %v\n", param)
 	v := reflect.ValueOf(param)
-	fmt.Printf("V: %s\n", v.Kind())
 	if reflect.Ptr == v.Kind() {
 		e := v.Elem()
-		fmt.Printf("E: %s\n", e.Kind())
 		switch e.Kind() {
 		case reflect.Struct:
 			c.req.Params = &[]interface{}{

@@ -7,7 +7,6 @@ package jsonrpc
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
 	"reflect"
@@ -129,21 +128,16 @@ func (c *serverCodec) ReadRequestBody(x interface{}) error {
 	// RPC params is struct.
         //     or a slice of specific type
 	//     or []interface{} for a generic receive
-	fmt.Printf("Ps: %v\n", x)
 	v := reflect.ValueOf(x)
-	fmt.Printf("Vs: %s\n", v.Kind())
 	if reflect.Ptr == v.Kind() {
 		e := v.Elem()
-		fmt.Printf("Es: %s\n", e.Kind())
 		switch e.Kind() {
 		case reflect.Struct:
 			var params [1]interface{}
 			params[0] = x
-			fmt.Printf("IN: %s\n", *c.req.Params)
 			return json.Unmarshal(*c.req.Params, &params)
 
 		case reflect.Slice:
-			fmt.Printf("IN: %s\n", *c.req.Params)
 			return json.Unmarshal(*c.req.Params, x)
 
 		default:
