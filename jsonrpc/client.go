@@ -9,9 +9,9 @@ package jsonrpc
 import (
 	"encoding/json"
 	"fmt"
+	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
 	"io"
 	"net"
-	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
 	"reflect"
 	"sync"
 )
@@ -22,9 +22,9 @@ type clientCodec struct {
 	c   io.Closer
 
 	// temporary work space
-	req    clientRequest
-	resp   clientResponse
-	notify clientNotification
+	req      clientRequest
+	resp     clientResponse
+	notify   clientNotification
 	isNotify bool
 
 	// JSON-RPC responses include the request id but not the request method.
@@ -46,9 +46,9 @@ func NewClientCodec(conn io.ReadWriteCloser) rpc.ClientCodec {
 }
 
 type clientRequest struct {
-	Method string        `json:"method"`
+	Method string      `json:"method"`
 	Params interface{} `json:"params"`
-	Id     uint64        `json:"id"`
+	Id     uint64      `json:"id"`
 }
 
 func (c *clientCodec) WriteRequest(r *rpc.Request, param interface{}) error {
@@ -100,7 +100,6 @@ func (n *clientNotification) reset() {
 	n.Method = ""
 	n.Params = nil
 }
-
 
 func (c *clientCodec) ReadResponseHeader(r *rpc.Response) error {
 	c.resp.reset()

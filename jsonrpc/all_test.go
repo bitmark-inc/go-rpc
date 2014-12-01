@@ -9,10 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
 	"io"
 	"io/ioutil"
 	"net"
-	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +45,7 @@ func (t *Arith) AddAgain(args *Args, reply *Reply) error {
 }
 
 type IntArray []int
+
 // test the normal array type of JSON RPC
 func (t *Arith) SumP(args *IntArray, reply *Reply) error {
 	s := 0
@@ -68,11 +69,11 @@ func (t *Arith) MixedP(args *[]interface{}, reply *Reply) error {
 	s := 0
 	for _, n := range *args {
 		switch n.(type) {
-		case float64:  // JSON default number type
+		case float64: // JSON default number type
 			s += int(n.(float64))
 		case string:
 			s += len(n.(string))
-		default:  // ignore
+		default: // ignore
 		}
 	}
 	reply.C = s
@@ -80,15 +81,16 @@ func (t *Arith) MixedP(args *[]interface{}, reply *Reply) error {
 }
 
 type GenericArguments []interface{}
+
 func (t *Arith) MixedA(args GenericArguments, reply *Reply) error {
 	s := 0
 	for _, n := range args {
 		switch n.(type) {
-		case float64:  // JSON default number type
+		case float64: // JSON default number type
 			s += int(n.(float64))
 		case string:
 			s += len(n.(string))
-		default:  // ignore
+		default: // ignore
 		}
 	}
 	reply.C = s
@@ -115,6 +117,7 @@ func (t *Arith) Error(args *Args, reply *Reply) error {
 func init() {
 	rpc.Register(new(Arith))
 }
+
 // send 10 notifications at 5ms intervals
 func backgroundNotifier(server *rpc.Server, count *int, stop <-chan bool) {
 	*count = 0

@@ -260,7 +260,7 @@ func (server *Server) SendNotification(method string, params interface{}) error 
 
 	server.notificationChan <- Notification{
 		ServiceMethod: method,
-		Params: params,
+		Params:        params,
 	}
 	return nil
 }

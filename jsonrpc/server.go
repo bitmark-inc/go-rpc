@@ -7,8 +7,8 @@ package jsonrpc
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	rpc "github.com/bitmark-inc/go-rpc" // "net/rpc"
+	"io"
 	"reflect"
 	"strings"
 	"sync"
@@ -126,7 +126,7 @@ func (c *serverCodec) ReadRequestBody(x interface{}) error {
 	}
 	// JSON params is array value.
 	// RPC params is struct.
-        //     or a slice of specific type
+	//     or a slice of specific type
 	//     or []interface{} for a generic receive
 	v := reflect.ValueOf(x)
 	if reflect.Ptr == v.Kind() {
@@ -152,7 +152,7 @@ func (c *serverCodec) WriteResponse(r *rpc.Response, x interface{}) error {
 	n, ok := x.(rpc.Notification)
 	if ok {
 		notify := serverNotify{
-			Id: &null,
+			Id:     &null,
 			Method: n.ServiceMethod,
 			Params: n.Params,
 		}

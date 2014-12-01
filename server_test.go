@@ -26,8 +26,8 @@ var (
 	once, newOnce, httpOnce   sync.Once
 	notificationCount         int
 	newNotificationCount      int
-	notificationReceived         int
-	newNotificationReceived      int
+	notificationReceived      int
+	newNotificationReceived   int
 )
 
 const (
