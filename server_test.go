@@ -410,7 +410,7 @@ func (codec *CodecEmulator) ReadRequestBody(argv interface{}) error {
 	if codec.args == nil {
 		return io.ErrUnexpectedEOF
 	}
-	*(argv.(*Args)) = *codec.args
+	*argv.(*Args) = *codec.args
 	return nil
 }
 
@@ -418,7 +418,7 @@ func (codec *CodecEmulator) WriteResponse(resp *Response, reply interface{}) err
 	if resp.Error != "" {
 		codec.err = errors.New(resp.Error)
 	} else {
-		*codec.reply = *(reply.(*Reply))
+		*codec.reply = *reply.(*Reply)
 	}
 	return nil
 }
